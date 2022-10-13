@@ -1,7 +1,0 @@
-[submodule "modules/lib/spconv"]
-    path = modules/lib/spconv
-    url = https://github.com/llijiang/spconv
-
-[submodule "modules/lib/pointgroup_ops"]
-    path = modules/lib/pointgroup_ops
-    url = https://github.com/dvlab-research/PointGroup/tree/master/lib/pointgroup_ops
