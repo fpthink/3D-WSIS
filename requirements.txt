@@ -1,0 +1,15 @@
+pybind11
+scipy
+torch_scatter
+open3d
+cmake>=3.13.2
+plyfile
+tensorboardX
+pyyaml
+cupy
+pynvrtc
+torch-scatter
+torch-sparse
+torch-cluster
+torch-spline-conv
+torch-geometric
