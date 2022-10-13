@@ -34,6 +34,8 @@ conda install -c bioconda google-sparsehash
 
 5\) Install `spconv` and `pointgroup_ops ` 
 
+[[spconv]](https://github.com/llijiang/spconv) [[pointgroup_ops]](https://github.com/dvlab-research/PointGroup/tree/master/lib/pointgroup_ops)
+
 Please refer to [PointGroup](https://github.com/dvlab-research/PointGroup) to install.
 
 
