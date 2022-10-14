@@ -77,14 +77,13 @@ This repo is built upon several repos, e.g., [PointGroup](https://github.com/dvl
 ## Citation
 If you find this work useful in your research, please cite:
 ```
-@InProceedings{Tang20223DWSIS,
+@inproceedings{tang20223dwsis,
     author    = {Tang, Linghua and Hui, Le and Xie, Jin},
     title     = {Learning Inter-Superpoint Affinity for Weakly Supervised 3D Instance Segmentation},
     booktitle = {ACCV},
     year      = {2022},
 }
-
-@InProceedings{Hui2022GraphCut,
+@inproceedings{hui2022graphcut,
     author    = {Hui, Le and Tang, Linghua and Shen, Yaqi and Xie, Jin and Yang, Jian},
     title     = {Learning Superpoint Graph Cut for 3D Instance Segmentation},
     booktitle = {NeurIPS},
