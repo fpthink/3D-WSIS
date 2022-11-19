@@ -73,6 +73,8 @@ Please set `$S3DIS_DATA/data` on `Line 29` of `config/S3DIS_Area5_3D_WSIS.yaml`.
 CUDA_VISIBLE_DEVICES=0 python train_s3dis.py --config config/S3DIS_Area5_3D_WSIS.yaml
 ```
 
+### Evaluation
+
 ```
 CUDA_VISIBLE_DEVICES=0 python test_s3dis.py --config config/S3DIS_Area5_3D_WSIS.yaml --pretrain log/S3DIS_Area5_3D_WSIS/epoch_00300_whole_scene.pth
 ```
