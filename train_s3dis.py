@@ -56,7 +56,7 @@ def initialize_dataset(cfg):
     # initialize train dataset
     
     datasets = importlib.import_module(cfg.dataset.type)
-    train_dataset = datasets.ScanNetV2Inst_spg(cfg.model, cfg.dataset, test_mode=False)
+    train_dataset = datasets.S3DIS_Inst_spg(cfg.model, cfg.dataset, test_mode=False)
 
     train_dataloader = torch.utils.data.DataLoader(dataset=train_dataset,
                                                    batch_size=cfg.dataloader.batch_size,
@@ -70,7 +70,7 @@ def initialize_dataset(cfg):
     cfg.dataset.task = 'val'
 
     datasets = importlib.import_module(cfg.dataset.type)
-    val_dataset = datasets.ScanNetV2Inst_spg(cfg.model, cfg.dataset, test_mode=True)
+    val_dataset = datasets.S3DIS_Inst_spg(cfg.model, cfg.dataset, test_mode=True)
     
     val_dataset.aug_flag = False
     val_dataloader = torch.utils.data.DataLoader(dataset=val_dataset,
@@ -298,17 +298,15 @@ def do_validation(model, val_dataloader, cfg, epoch, logger):
     with torch.no_grad():
         model = model.eval() ##########
         
-        label_root = os.path.join(cfg.dataset.data_root, "val_gt")
-
-        point_sem_evaluator = evaluation.ScanNetSemanticEvaluator(label_root, logger=logger)
-        sem_evaluator = evaluation.ScanNetSemanticEvaluator(label_root, logger=logger) 
-        mid_sem_evaluator = evaluation.ScanNetSemanticEvaluator(label_root, logger=logger)
+        point_sem_evaluator = evaluation.S3DISSemanticEvaluator(logger=logger)
+        mid_sem_evaluator = evaluation.S3DISSemanticEvaluator(logger=logger)
+        sem_evaluator = evaluation.S3DISSemanticEvaluator(logger=logger) 
 
         for i, batch in enumerate(val_dataloader):
             torch.cuda.empty_cache() # (empty cuda cache, Optional)
 
-            ##### prepare input and forward
             coords = batch["locs"].cuda()                           # [N, 1 + 3], long, cuda, dimension 0 for batch_idx
+
             voxel_coords = batch["voxel_locs"].cuda()               # [M, 1 + 3], long, cuda
             p2v_map = batch["p2v_map"].cuda()                       # [N], int, cuda
             v2p_map = batch["v2p_map"].cuda()                       # [M, 1 + maxActive], int, cuda
@@ -318,6 +316,7 @@ def do_validation(model, val_dataloader, cfg, epoch, logger):
 
             superpoint = batch["superpoint"].cuda()                 # [N], long, cuda
             GIs = batch["GIs"]                       # igraph
+
 
             edge_u_list = batch["edge_u_list"].cuda()
             edge_v_list = batch["edge_v_list"].cuda()
@@ -350,13 +349,13 @@ def do_validation(model, val_dataloader, cfg, epoch, logger):
             semantic_scores = ret["semantic_scores"]    # [N, nClass] float32, cuda
             
             val_scene_name = scene_list[0]
+            scene_sem_gt = val_dataloader.dataset.get_scene_sem_gt(val_scene_name)
             superpoint = superpoint.cpu().detach().numpy()
 
             #### point-level semantic result 
             semantic_pred = semantic_scores.max(1)[1]  # [N]
-            inputs = [{"scene_name": val_scene_name}]
-            outputs = [{"semantic_pred": semantic_pred}]
-            point_sem_evaluator.process(inputs, outputs) # semantic evaluation
+            outputs = [{"semantic_pred": semantic_pred, "semantic_gt":scene_sem_gt}]
+            point_sem_evaluator.process([{}], outputs) 
 
             ##### middle-level semantic segmentation evaluation
             middle_level_semantic_pred = np.zeros(len(superpoint))
@@ -369,9 +368,8 @@ def do_validation(model, val_dataloader, cfg, epoch, logger):
             middle_level_semantic_pred = middle_level_semantic_pred.astype('int')
             middle_level_semantic_pred = torch.from_numpy(middle_level_semantic_pred)
 
-            inputs = [{"scene_name": val_scene_name}]
-            outputs = [{"semantic_pred": middle_level_semantic_pred}]
-            mid_sem_evaluator.process(inputs, outputs)
+            outputs = [{"semantic_pred": middle_level_semantic_pred, "semantic_gt":scene_sem_gt}]
+            mid_sem_evaluator.process([{}], outputs)
 
             #### superpoint-level semantic result ---> point-level semantic result
             sp_semantic_scores = ret['sp_semantic_scores']
@@ -388,9 +386,8 @@ def do_validation(model, val_dataloader, cfg, epoch, logger):
             point_level_semantic_pred = point_level_semantic_pred.astype('int')
             point_level_semantic_pred = torch.from_numpy(point_level_semantic_pred)
 
-            inputs = [{"scene_name": val_scene_name}]
-            outputs = [{"semantic_pred": point_level_semantic_pred}]
-            sem_evaluator.process(inputs, outputs) # semantic evaluation
+            outputs = [{"semantic_pred": point_level_semantic_pred, "semantic_gt":scene_sem_gt}]
+            sem_evaluator.process([{}], outputs) 
         
         logger.info("point semantic evaluation")
         point_sem_evaluator.evaluate() # point-level semantic result
@@ -405,6 +402,7 @@ def extend_label_to_first_order_neighbor(model, cfg, logger, train_dataset):
     
     train_dataset.test_mode = True 
     train_dataset.aug_flag = False
+    train_dataset.subsample_train = False
 
     update_dataloader = torch.utils.data.DataLoader(dataset=train_dataset,
                                                    batch_size=1,  
@@ -482,7 +480,7 @@ def extend_label_to_first_order_neighbor(model, cfg, logger, train_dataset):
     ##########################################
     train_dataset.test_mode = False 
     train_dataset.aug_flag = True 
-
+    train_dataset.subsample_train = True
 
 
 def propagation_label(model, cfg, logger, train_dataset, iteration_ind):
@@ -493,6 +491,7 @@ def propagation_label(model, cfg, logger, train_dataset, iteration_ind):
     
     train_dataset.test_mode = True 
     train_dataset.aug_flag = False
+    train_dataset.subsample_train = False
 
     update_dataloader = torch.utils.data.DataLoader(dataset=train_dataset,
                                                    batch_size=1,  
@@ -579,6 +578,7 @@ def propagation_label(model, cfg, logger, train_dataset, iteration_ind):
     ##########################################
     train_dataset.test_mode = False 
     train_dataset.aug_flag = True 
+    train_dataset.subsample_train = True
 
 
 def propagation_label_to_whole_scene(model, cfg, logger, train_dataset):
@@ -589,6 +589,7 @@ def propagation_label_to_whole_scene(model, cfg, logger, train_dataset):
     
     train_dataset.test_mode = True 
     train_dataset.aug_flag = False
+    train_dataset.subsample_train = False
 
     update_dataloader = torch.utils.data.DataLoader(dataset=train_dataset,
                                                    batch_size=1,  
@@ -668,6 +669,7 @@ def propagation_label_to_whole_scene(model, cfg, logger, train_dataset):
     ##########################################
     train_dataset.test_mode = False 
     train_dataset.aug_flag = True 
+    train_dataset.subsample_train = True
 
 
 def get_checkpoint(logger, log_dir, epoch=0, checkpoint=""):
@@ -749,13 +751,6 @@ def main(args):
     train_dataset, val_dataset, train_dataloader, val_dataloader = initialize_dataset(cfg)
     
 
-    # ------------------------- load pretrain network --------------------------
-    # logger.info('load pretrain network ...')
-    # pretrain = r'./log/epoch_00200_semantic.pth'
-    # utils.load_checkpoint(
-    #     model, pretrain, strict=False
-    # ) 
-
     # ----------------------------------------------------------------------------------------
     # start training
 
@@ -763,7 +758,7 @@ def main(args):
     do_train(model, cfg, logger, train_dataloader, val_dataloader, 'semantic') # only for semantic
     
     # step 2 label propagation
-    for iteration_ind, iteration_train_epochs in enumerate([80, 80]): # [80, 80, 80] 
+    for iteration_ind, iteration_train_epochs in enumerate([200, 200, 200]): # [80, 80, 80] 
 
         logger.info('propagate label with affinity , {}-th iteration'.format(iteration_ind))
         propagation_label(model, cfg, logger, train_dataset, iteration_ind)
@@ -776,12 +771,15 @@ def main(args):
     
     # step 3 pseudo instances
     propagation_label_to_whole_scene(model, cfg, logger, train_dataset)
-    cfg.data.epochs = 120
-    cfg.lr_scheduler.max_iters = 120  # 120 epoch - 15 hours   80 epoch - 10 hours
+    cfg.data.epochs = 300
+    cfg.lr_scheduler.max_iters = 300  
     cfg.loss.joint_training_epoch = -1
     cfg.loss.supervise_sp_offset = True
     cfg.loss.supervise_instance_size = True
     do_train(model, cfg, logger, train_dataloader, val_dataloader, 'whole_scene')
+
+
+
 
 if __name__ == "__main__":
     # get the args

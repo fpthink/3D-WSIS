@@ -1,5 +1,3 @@
-
-import collections
 import os
 import copy
 import time
@@ -12,22 +10,24 @@ import scipy.ndimage
 import scipy.interpolate
 import itertools
 import igraph
+import collections
 
+# import gorilla
+# import open3d as o3d
 import numpy as np
 import torch
 from torch.utils.data import Dataset
 from plyfile import PlyData, PlyElement
 from scipy import stats
 
+# import segmentator
 import pointgroup_ops
 
 import utils
 
 from modules.model import ecc
 
-
-
-class ScanNetV2Inst_spg(Dataset):
+class S3DIS_Inst_spg(Dataset):
     def __init__(self, param_model, param_dataset, test_mode: bool=False):
                  
         # initialize dataset parameters
@@ -41,7 +41,11 @@ class ScanNetV2Inst_spg(Dataset):
         self.task = param_dataset.task                                                  # "train"
         self.test_mode = test_mode                                              # False
         self.aug_flag = "train" in self.task
-        
+
+        self.test_area = param_dataset.test_area  # select one S3DIS area for validation
+
+        self.subsample_train = param_dataset.subsample_train
+
         self.debug = getattr(param_dataset, "debug", False)
 
         self.annotation_num = getattr(param_dataset, "annotation_num", 1)
@@ -51,12 +55,17 @@ class ScanNetV2Inst_spg(Dataset):
         # load files
         self.load_files()
         self.weak_Label_init()
-        
+
     
     def load_files(self):
-        # ----------------------------- load process data  ---------------------------------
-        self.logger.info("load data from {}".format(self.data_root))
-        file_names = sorted(glob.glob(os.path.join(self.data_root, self.task, "*.pth")))
+
+        self.logger.info('load data from: {}'.format(self.data_root))
+
+        file_names = sorted(glob.glob(os.path.join(self.data_root, "*.pth")))
+        if "train" in self.task:
+            file_names = [ _ for _ in file_names if self.test_area not in _ ]
+        else:
+            file_names = [ _ for _ in file_names if self.test_area in _ ]
 
         if self.debug: file_names = file_names[:20]
 
@@ -65,7 +74,7 @@ class ScanNetV2Inst_spg(Dataset):
 
         # ------------------ load superpoints & superpoints graph --------------------------
 
-        path = os.path.join(self.data_root, self.task)
+        path = self.data_root
         self.superpoints = {}
         self.superpoints_graph = {}
         self.scene2files = {}
@@ -82,7 +91,7 @@ class ScanNetV2Inst_spg(Dataset):
                 self.acquire_weak_label(coords, semantic_labels, instance_labels, superpoint, spg, self.annotation_num)
 
             self.superpoints_graph.update({scene_name: spg})
-
+        
         if 'train' in self.task:
             self.logger.info('acquire weak label finish ! annotation_num: {}'.format(self.annotation_num))
         
@@ -95,18 +104,8 @@ class ScanNetV2Inst_spg(Dataset):
 
     def __getitem__(self, index: int) -> Tuple:
 
-
         if "test" in self.task:
-            xyz_origin, rgb, point_semantic_label_GT, point_instance_label_GT, superpoint, scene = self.files[index]
-
-            spg = self.superpoints_graph[scene]
-            spg_weak = self.weak_label_spg[scene]
-            superpoint = self.superpoints[scene]
-            ##############
-            semantic_label = point_semantic_label_GT
-            instance_label = point_instance_label_GT
-            superpoint_graph = spg_weak 
-            
+            raise Exception('not implementation!')
         elif "val" in self.task:
             xyz_origin, rgb, point_semantic_label_GT, point_instance_label_GT, superpoint, scene = self.files[index]
 
@@ -119,7 +118,7 @@ class ScanNetV2Inst_spg(Dataset):
             superpoint_graph = spg_weak 
 
         elif "train" in self.task:
-            xyz_origin, rgb, point_semantic_label_GT, point_instance_label_GT, superpoint, scene = self.files[index]
+            full_xyz_origin, rgb, point_semantic_label_GT, point_instance_label_GT, superpoint, scene = self.files[index]
 
             point_semantic_label_weak, point_instance_label_weak = self.scene_point_level_weak_label[scene]
 
@@ -131,13 +130,26 @@ class ScanNetV2Inst_spg(Dataset):
 
             semantic_label = point_semantic_label_weak
             instance_label = point_instance_label_weak
-            superpoint_graph = spg_weak    
+            superpoint_graph = spg_weak
+
+            # https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.random.choice.html
+            if self.subsample_train:
+                choice_ind = np.random.choice(full_xyz_origin.shape[0], size=(full_xyz_origin.shape[0]//4), replace=False)
+                xyz_origin = full_xyz_origin[choice_ind]
+                rgb = rgb[choice_ind]
+                semantic_label = semantic_label[choice_ind]
+                instance_label = instance_label[choice_ind]
+                superpoint = superpoint[choice_ind]
+            else:
+                xyz_origin = full_xyz_origin
+
         else:
             raise Exception('not implementation!')    
 
-        
-        superpoint_graph = copy.deepcopy(superpoint_graph) 
 
+
+
+        superpoint_graph = copy.deepcopy(superpoint_graph) 
 
 
         if self.aug_flag:
@@ -155,7 +167,7 @@ class ScanNetV2Inst_spg(Dataset):
         ### crop
         valid_idxs = np.ones(len(xyz_middle), dtype=np.bool)
         if not self.test_mode:
-            xyz, valid_idxs = self.crop(xyz)
+            xyz, valid_idxs = self.crop_v2(xyz)
 
         xyz_middle = xyz_middle[valid_idxs]                                         # (n, 3) np.float64
         xyz = xyz[valid_idxs]                                                       # (n, 3) np.float64
@@ -189,9 +201,7 @@ class ScanNetV2Inst_spg(Dataset):
         inst_info = torch.from_numpy(inst_info)
 
         return scene, loc, loc_offset, loc_float, feat, semantic_label, instance_label, superpoint, G, inst_num, inst_info, inst_pointnum
-
-
-
+    
     def data_aug_with_graph(self, xyz, graph, jitter=False, flip=False, rot=False):
         m = np.eye(3)
         if jitter:
@@ -271,6 +281,42 @@ class ScanNetV2Inst_spg(Dataset):
             full_scale[:2] -= 32
 
         return xyz_offset, valid_idxs
+    
+    def crop_v2(self, xyz):
+
+        _xyz = xyz.copy()
+        valid_idxs = (_xyz.min(1) >= 0)
+        assert valid_idxs.sum() == xyz.shape[0]
+
+        room_range_max = xyz.max(0)
+        center = xyz[np.random.choice(len(xyz))][:3]
+
+        _x, _y = max(room_range_max[0]-center[0], center[0]), max(room_range_max[1]-center[1], center[1])
+
+        scale = np.arange(0, 1, 0.05)
+
+        def count_points(s):
+            _dx, _dy = _x * s, _y * s
+            block_min = center - [ _dx, _dy, 0]
+            block_max = center + [ _dx, _dy, 0]
+            point_idxs = ((xyz[:, 0] >= block_min[0]) & (xyz[:, 0] <= block_max[0]) & (xyz[:, 1] >= block_min[1]) & (xyz[:, 1] <= block_max[1]))
+            return point_idxs
+        
+        # binary search
+        low, high = 0, len(scale)-1
+        while low < high:
+            mid = int(math.ceil((low+high)/2))
+
+            if count_points(scale[mid]).sum() <= self.max_npoint:
+                low = mid
+            else:
+                high = mid - 1
+
+        point_idxs = count_points(scale[high])
+
+        xyz_offset = xyz[point_idxs].min(0)
+        _xyz -= xyz_offset
+        return _xyz, point_idxs
 
     def get_instance_info(self,
                           xyz: np.ndarray,
@@ -329,16 +375,11 @@ class ScanNetV2Inst_spg(Dataset):
             j += 1
         return instance_label
 
+
     def cloud_edge_feats(self, edgeattrs):
         edgefeats = np.asarray(edgeattrs['f'])
         return torch.from_numpy(edgefeats), None
-
-    def debug_superpoint(self, x):
-        print(f'min(x) {torch.min(x)} max(x) {torch.max(x)}')
-        tmp, idx = torch.unique(x, return_inverse=True)
-        print(f'tmp: {tmp.shape} idx: {idx.shape}')
-        print(f'min(tmp) {torch.min(tmp)} min(idx) {torch.min(idx)}')
-        print(f'max(tmp) {torch.max(tmp)} max(idx) {torch.max(idx)}')
+    
 
     def collate_fn(self, batch: Sequence[Sequence]) -> Dict:
         locs = []
@@ -377,11 +418,15 @@ class ScanNetV2Inst_spg(Dataset):
             # feat:             rgb
             # graph:            igraph
             
+            # print(f'i: {i}')
+            # self.debug_superpoint(superpoint)
 
             scene_list.append(scene)
-
+            # print(f'superpoint bias: {superpoint_bias}')
+            # print(f'a: superpoint num {superpoint.max() + 1}')
             superpoint += superpoint_bias
-
+            # print(f'b: superpoint num {superpoint.max() + 1}')
+            # superpoint_bias += (superpoint.max() + 1)   # superpoints idx: 0...max, so max + 1 is the real number of superpoints 
             superpoint_bias = (superpoint.max() + 1)   # superpoints idx: 0...max, so max + 1 is the real number of superpoints
 
             sp_batch_offsets.append(superpoint_bias) 
@@ -447,7 +492,12 @@ class ScanNetV2Inst_spg(Dataset):
         # -------------------------------- voxelize ---------------------------------------
         batch_size = len(batch)
         voxel_locs, p2v_map, v2p_map = pointgroup_ops.voxelization_idx(locs, batch_size, 4)
-
+        # voxel_locs:   [M, 4]     M: number of voxel   M << N
+        # p2v_map:      [N, 4]
+        # v2p_map:      [M, 4]
+        # print(f'voxel_locs: {voxel_locs.shape}')
+        # print(f'p2v_map: {p2v_map.shape}')
+        # print(f'v2p_map: {v2p_map.shape}')
 
         # -------------------------- prepare superpoint edges -----------------------------
         is1ins_labels = GIs[0].is1ins_labels
@@ -472,6 +522,7 @@ class ScanNetV2Inst_spg(Dataset):
                 "superpoint_instance_voxel_num": superpoint_instance_voxel_num_list,
                 "superpoint_instance_size": superpoint_instance_size_list,
                 }
+    
 
     def get_scene_graph(self, scene_name):
         return self.superpoints_graph[scene_name]
@@ -480,14 +531,22 @@ class ScanNetV2Inst_spg(Dataset):
     def get_scene_data(self, scene_name):
         return self.scene2files[scene_name]
 
+    def get_scene_sem_gt(self, scene_name):
+        xyz_origin, rgb, point_semantic_label_GT, point_instance_label_GT, superpoint, scene = self.scene2files[scene_name]
+
+        return torch.from_numpy(point_semantic_label_GT.astype('int'))
+    
+    def get_scene_ins_gt(self, scene_name):
+        xyz_origin, rgb, point_semantic_label_GT, point_instance_label_GT, superpoint, scene = self.scene2files[scene_name]
+
+        return torch.from_numpy(point_instance_label_GT.astype('int'))
 
     def weak_Label_init(self):
 
         self._weak_label_spg_init()
         self.generate_point_level_weak_label()
-
-
     
+
     def _weak_label_spg_init(self):
         
         self.weak_label_spg = {}
@@ -510,7 +569,7 @@ class ScanNetV2Inst_spg(Dataset):
                     raise Exception('unknown case!')
 
             self.weak_label_spg.update({scene: spg_copy})
-
+    
 
     def cal_occupancy(self, xyz_origin, instance_label, superpoint_graph, add_occupancy_signal=False):
 
@@ -562,8 +621,7 @@ class ScanNetV2Inst_spg(Dataset):
         for v in superpoint_graph.vs:
             instance_label = int(v['instance_label'])
             v['instance_size'] = max_instance_radius[instance_label]
-
-
+    
 
     def generate_point_level_weak_label(self, add_occupancy_signal=False, add_instance_size_signal=False):
 
@@ -660,7 +718,6 @@ class ScanNetV2Inst_spg(Dataset):
         self.logger.info("instance labeled / GT labels num: {:.2%}".format(instance_label_num / GT_label))
         self.logger.info("propagation instance label accuracy: {:.2%}".format(correct_instance_label_num / instance_label_num))
 
-    
     def weak_label_propagation(self, scene_name, sp_semantic_value, superpoint_pred_semantic, superpoint_affinity_matrix, iterations_num):
         """
         conduct label propagation
@@ -926,7 +983,7 @@ class ScanNetV2Inst_spg(Dataset):
             _center_dis = np.linalg.norm(_center_dis, ord=2, axis=1)
 
             closest_ind = np.argmin(_center_dis)
-            if _center_dis[closest_ind] > 0.9: 
+            if _center_dis[closest_ind] > 1.2: 
                 continue
 
 
@@ -966,7 +1023,6 @@ class ScanNetV2Inst_spg(Dataset):
         # show_weak_label(scene_name, xyz_origin, superpoint, point_instance_label_GT,  spg_copy, 'whole_scene_pseudo_label')
         # show_pseudo_center(scene_name, np.array(pseudo_instance_center_list))
     
-
     def acquire_weak_label(self, xyz, semantic_labels, instance_labels, superpoint, graph, annotation_num=1):
     
         superpoint = superpoint.astype('int')
@@ -1015,7 +1071,6 @@ class ScanNetV2Inst_spg(Dataset):
             # choice_sp = sp_list[0][0]
             # choice_sp_list.append(choice_sp)
 
-
             # calculate the centor of instances
             weak_label_instance_mask = np.isin(superpoint, choice_sp)
             weak_label_instance_center = np.mean(xyz[weak_label_instance_mask], axis=0)
@@ -1034,6 +1089,7 @@ class ScanNetV2Inst_spg(Dataset):
                 v['semantic_label'] = -100
                 v['instance_label'] = -100
                 v['superpoint_offset_vector'] = np.array([0., 0., 0.])
+
 
 
 def show_weak_label(scene_name, xyz, superpoint, point_instance_label_GT, graph, discribe):
@@ -1070,14 +1126,3 @@ def show_pseudo_center(scene_name, choice_center_xyz_list):
     
     save_path = r''
     plydata.write(os.path.join(save_path, scene_name+'_pseudo_center.ply'))
-        
-            
-
-
-
-            
-
-
-
-
-

@@ -59,19 +59,44 @@ CUDA_VISIBLE_DEVICES=0 python train_scannetv2.py --config config/ScanNet_v2_3D_W
 CUDA_VISIBLE_DEVICES=0 python test_scannetv2.py --config config/ScanNet_v2_3D_WSIS.yaml --pretrain log/ScanNet_v2_3D_WSIS/epoch_00120_whole_scene.pth
 ```
 
+## S3DIS
+
+### Data Preparation
+
+Please refer to the `S3DIS.md` in `data/S3DIS` to process data.
+
+### Training
+
+Please set `$S3DIS_DATA/data` on `Line 29` of `config/S3DIS_Area5_3D_WSIS.yaml`.
+
+```
+CUDA_VISIBLE_DEVICES=0 python train_s3dis.py --config config/S3DIS_Area5_3D_WSIS.yaml
+```
+
+```
+CUDA_VISIBLE_DEVICES=0 python test_s3dis.py --config config/S3DIS_Area5_3D_WSIS.yaml --pretrain log/S3DIS_Area5_3D_WSIS/epoch_00300_whole_scene.pth
+```
+
 ## Pretrained Model
 
-### ScanNet v2 :
+### ScanNet v2 validation :
 [[Baidu Cloud]](https://pan.baidu.com/s/1F-LP-2nozqZqfLQjbxn63g?pwd=jsj3) [[Google Dirve]](https://drive.google.com/drive/folders/10wS-yfrP6xfxnKzAFOdKOL4MBgENkQup?usp=sharing)
 
 Its performance on ScanNet-v2 validation set is 29.8/48.4/67.7 in terms of mAP/mAP50/mAP25. 
-> Note :  Due to the randomness of weak label generation, the results of network training fluctuate slightly. We report stable results in our paper.
+
+### S3DIS Area5 :
+
+[[Baidu Cloud]](https://pan.baidu.com/s/1EcEl2dA8Dk8qipOk9QvlVA?pwd=tog9) [[Google Dirve]](https://drive.google.com/drive/folders/1T66iuECxOUYKgX4Axf7nl_rpFIYmG-Z9?usp=sharing)
+
+Its performance on S3DIS Area5 set is 22.4/35.2/47.2/43.2/44.7/51.8/41.3 in terms of mAP/mAP50/mAP25/mCov/mWCov/mPrec/mRec.
+
+> Note :  Due to the randomness of weak label generation, the results of network training fluctuate slightly. 
 
 ## Acknowledgement
 This repo is built upon several repos, e.g., [PointGroup](https://github.com/dvlab-research/PointGroupt), [SSTNet](https://github.com/Gorilla-Lab-SCUT/SSTNet), [HAIS](https://github.com/hustvl/HAIS), [spconv](https://github.com/traveller59/spconv) and [ScanNet](https://github.com/ScanNet/ScanNet).
 
 ## TODO
-- [ ] release S3DIS dataset
+- [X] release S3DIS dataset
 
 
 ## Citation

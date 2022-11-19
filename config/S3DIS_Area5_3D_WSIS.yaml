@@ -1,0 +1,70 @@
+
+task: train  # train, test
+seed: 123
+
+data:
+  ignore_label: -100
+  mode: 4 # 4=mean
+
+  # train mode
+  epochs: 400
+  save_freq: 20  
+  eval_freq: 50
+
+  # test mode
+  test_seed: 567
+  test_workers: 8 # data loader workers
+
+  # test
+  test_epoch: 400
+
+dataloader:
+  batch_size: 6     
+  num_workers: 8    
+
+dataset:
+  debug: False
+  annotation_num: 1  # / per instance  # !!!!!!!!!!!!!!!!!!!
+  type: "s3dis_dataset"
+  data_root: $S3DIS_DATA/data 
+  full_scale: "[128, 512]"
+  scale: 50             # voxel_size = 1 / scale, scale 50(2cm)  
+  max_npoint: 250000 
+  task: "train"
+  with_elastic: False
+  test_area: "Area_5"
+  subsample_train: True
+
+model:
+  type: "backbone_3D_WSIS"
+  input_channel: 3
+  use_coords: True
+  blocks: 5
+  block_reps: 2
+  media: 32 
+  classes: 13 
+
+  fix_module: "[]"
+
+# ----------------- loss ----------------
+loss:
+  type: "losses_3D_WSIS"
+  ignore_label: -100
+  joint_training_epoch: 240 
+  supervise_sp_offset: False # During initial training, the offset is not supervised
+  supervise_instance_size: False # During initial training, the instance size is not supervised
+  semantic_dice: True
+  loss_weight: "[1.0, 1.0, 1.0, 1.0, 1.0]" 
+
+# -------------- optimizer ---------------
+optimizer:
+  type: "AdamW"     # AdamW | Adam
+  lr: 0.001
+  weight_decay: 0.0001
+
+# ------------- lr_scheduler -------------
+lr_scheduler:
+  type: "PolyLR"
+  max_iters: 400    # 512 | 614912 | 153600
+  power: 0.9
+  constant_ending: 0.0
