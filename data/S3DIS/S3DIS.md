@@ -60,7 +60,7 @@ python partition/partition_S3DIS.py --data_root $S3DIS_DIR --save_dir $SP_DIR --
 
 `$SP_DIR` is the directory used to save SPG superpoint data.
 
-`$VIS_DIR` is the directory used to save SPG superpoint visualization. Use [MeshLab](https://github.com/cnr-isti-vclab/meshlab) to view the visualization file `.pcl`.
+`$VIS_DIR` is the directory used to save SPG superpoint visualization. Use [MeshLab](https://github.com/cnr-isti-vclab/meshlab) to view the visualization file `.ply`.
 
 # Data Preparation
 
